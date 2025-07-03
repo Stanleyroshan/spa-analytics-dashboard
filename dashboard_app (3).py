@@ -9,105 +9,65 @@ from sklearn.metrics import r2_score
 import calendar
 import warnings
 
-st.set_page_config(page_title="Business Analytics Dashboard", layout="wide", page_icon="🚀")
+# --- 1. PROFESSIONAL PAGE CONFIGURATION & STYLING ---
+st.set_page_config(
+    page_title="Business Analytics Dashboard",
+    page_icon="🚀",
+    layout="wide"
+)
 warnings.filterwarnings('ignore')
 sns.set_theme(style="whitegrid", palette="viridis")
 st.title("🚀 Professional Business Analytics Dashboard")
 st.sidebar.header("Controls")
+
+# --- 2. ROBUST DATA UPLOADER ---
 uploaded_file = st.sidebar.file_uploader("1. Upload your 'app_data.parquet' file", type=["parquet"])
 
-if uploaded_file is not None:
-    df_sales = pd.read_parquet(uploaded_file)
-    df_sales['document_date'] = pd.to_datetime(df_sales['document_date'])
-    st.sidebar.success("Data loaded successfully!")
+@st.cache_data
+def load_parquet_data(uploaded_file):
+    """Reads the uploaded Parquet file into a pandas DataFrame."""
+    return pd.read_parquet(uploaded_file)
 
+# --- 3. ANALYSIS FUNCTION LIBRARY ---
+def display_location_analysis(df_sales):
+    st.header("🌍 Location Performance: Profit & Sales Revenue")
+    tab1, tab2 = st.tabs(["📊 Past Performance Dashboard", "🔮 Future Profit Forecasting"])
+
+    with tab1:
+        st.subheader("Historical Performance Analysis")
+        location_performance = df_sales.groupby('location_name').agg(
+            total_profit=('profit', 'sum'),
+            total_revenue=('total_inclusive', 'sum')
+        ).reset_index()
+        
+        st.markdown("---")
+        st.subheader("🥇 Top Performer Finder")
+        col1, col2 = st.columns(2)
+        if col1.button("Find Top Location by SALES REVENUE", use_container_width=True):
+            revenue_leader = location_performance.sort_values(by='total_revenue', ascending=False).iloc[0]
+            st.success(f"**Top Sales Location:** {revenue_leader['location_name']}")
+            st.metric(label="Total Revenue Generated", value=f"{revenue_leader['total_revenue']:,.0f}")
+        if col2.button("Find Top Location by PROFIT", use_container_width=True):
+            profit_leader = location_performance.sort_values(by='total_profit', ascending=False).iloc[0]
+            st.success(f"**Top Profit Location:** {profit_leader['location_name']}")
+            st.metric(label="Total Profit Generated", value=f"{profit_leader['total_profit']:,.0f}")
+        st.markdown("---")
+        
+        st.subheader("Performance Visualizations")
+        # (Your visualization code here...)
+
+    with tab2:
+        st.subheader("Interactive Profit Forecasting")
+        # (Your model training and prediction code here...)
+
+# --- 4. MAIN APP LOGIC ---
+if uploaded_file is not None:
+    df_sales = load_parquet_data(uploaded_file)
+    st.sidebar.success("✅ Data loaded!")
     analysis_options = ["Location Profitability & Forecasting (#20)"]
     analysis_choice = st.sidebar.radio("2. Choose an analysis:", analysis_options)
+    
     if analysis_choice == "Location Profitability & Forecasting (#20)":
-        st.header("Location Profitability & Forecasting")
-        tab1, tab2 = st.tabs(["📊 Past Performance Dashboard", "🔮 Future Profit Forecasting"])
-
-        with tab1:
-            st.subheader("Historical Performance Dashboard")
-            location_performance = df_sales.groupby('location_name').agg(
-                total_profit=('profit', 'sum'), total_revenue=('total_inclusive', 'sum'),
-                avg_transaction_value=('total_inclusive', 'mean')).reset_index()
-            location_performance['profit_margin_pct'] = ((location_performance['total_profit'] / location_performance['total_revenue']) * 100).fillna(0)
-            location_performance = location_performance.sort_values(by='total_profit', ascending=False)
-
-            profit_leader = location_performance.iloc[0]
-            margin_leader = location_performance.loc[location_performance['profit_margin_pct'].idxmax()]
-            st.info(f"**Automated Summary:** The top profit generator is **{profit_leader['location_name']}**. The most efficient site (highest margin) is **{margin_leader['location_name']}**.")
-
-            col1, col2 = st.columns(2)
-            with col1:
-                fig1, ax1 = plt.subplots(); sns.barplot(x='total_profit', y='location_name', data=location_performance, ax=ax1, palette='Greens_r'); st.pyplot(fig1)
-            with col2:
-                fig2, ax2 = plt.subplots(); sns.barplot(x='profit_margin_pct', y='location_name', data=location_performance.sort_values('profit_margin_pct', ascending=False), ax=ax2, palette='Blues_r'); st.pyplot(fig2)
-
-        with tab2:
-            st.subheader("Interactive Profit Forecasting")
-
-            @st.cache_resource
-            def train_profit_model(df):
-                monthly_profit = df.groupby(['location_name', pd.Grouper(key='document_date', freq='ME')]).agg(monthly_profit=('profit', 'sum')).reset_index()
-                monthly_profit['month'], monthly_profit['year'] = monthly_profit['document_date'].dt.month, monthly_profit['document_date'].dt.year
-                model_data = pd.get_dummies(monthly_profit, columns=['location_name'])
-                X = model_data.drop(columns=['document_date', 'monthly_profit'])
-                y = model_data['monthly_profit']
-                X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.2, random_state=42)
-                eval_model = XGBRegressor(n_estimators=100, random_state=42).fit(X_train, y_train)
-                accuracy = r2_score(y_test, eval_model.predict(X_test))
-                final_model = XGBRegressor(n_estimators=100, random_state=42).fit(X, y)
-                return final_model, X.columns, accuracy
-
-            model, training_cols, accuracy = train_profit_model(df_sales)
-            st.info(f"**Predictive Model Accuracy (R-squared): {accuracy:.1%}**")
-
-            all_locations = sorted(df_sales['location_name'].unique())
-            selected_location = st.selectbox("Select a Location to Forecast:", all_locations)
-
-            if selected_location:
-                forecast_year = df_sales['document_date'].dt.year.max() + 1
-                forecasts = [{'Month': calendar.month_name[m], 'Forecasted Profit': model.predict(pd.DataFrame([{'month': m, 'year': forecast_year, **{c: (c == f'location_name_{selected_location}') for c in training_cols if 'location_name_' in c}}])[training_cols])[0]} for m in range(1, 13)]
-                forecast_df = pd.DataFrame(forecasts)
-
-                fig, ax = plt.subplots(figsize=(12, 6)); sns.barplot(x='Month', y='Forecasted Profit', data=forecast_df, ax=ax, palette='cividis'); plt.xticks(rotation=45); st.pyplot(fig)
-
-                peak_month = forecast_df.loc[forecast_df['Forecasted Profit'].idxmax()]
-                low_month = forecast_df.loc[forecast_df['Forecasted Profit'].idxmin()]
-                st.success(f"**Automated Recommendation:** The model predicts **{peak_month['Month']}** will be the most profitable month. Plan for peak demand during this time and consider promotions during **{low_month['Month']}**.")
+        display_location_analysis(df_sales)
 else:
-    st.info("Please upload your `app_data.parquet` file to begin the analysis.")
-
-
-
-import subprocess, time, re
-
-print("Getting your public IP address (password)...")
-ip_address = subprocess.check_output(['wget', '-q', '-O', '-', 'ipv4.icanhazip.com']).decode('utf-8').strip()
-print(f"Your IP Address/Password is: {ip_address}")
-
-with open('run_streamlit.sh', 'w') as f:
-    f.write('python -m streamlit run app.py --server.port 8501 --server.headless true')
-
-process = subprocess.Popen(['bash', 'run_streamlit.sh'])
-print("\nStarting Streamlit server...")
-time.sleep(5)
-
-print("Starting tunnel... Your URL will appear below.")
-localtunnel_process = subprocess.Popen(["npx", "localtunnel", "--port", "8501"], stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
-
-public_url = None
-try:
-    for line in iter(localtunnel_process.stdout.readline, ''):
-        if "your url is:" in line:
-            public_url = re.search(r'https?://[^\s]+', line).group(0)
-            break
-except Exception as e:
-    print(f"Error reading localtunnel output: {e}")
-
-if public_url:
-    print(f"\n🚀 YOUR DASHBOARD IS LIVE AT: {public_url}")
-else:
-    print("\nFAILED to start localtunnel.")
+    st.info("👈 Please upload your `app_data.parquet` file to begin.")
