@@ -9,7 +9,6 @@ from sklearn.metrics import r2_score
 import calendar
 import warnings
 
-# --- 1. PROFESSIONAL PAGE CONFIGURATION & STYLING ---
 st.set_page_config(
     page_title="Business Analytics Dashboard",
     page_icon="🚀",
@@ -20,7 +19,6 @@ sns.set_theme(style="whitegrid", palette="viridis")
 st.title("🚀 Professional Business Analytics Dashboard")
 st.sidebar.header("Controls")
 
-# --- 2. ROBUST DATA UPLOADER & CACHED PREPARATION ---
 @st.cache_data
 def load_parquet_data(_uploaded_file_buffer):
     """Reads the uploaded Parquet file into a pandas DataFrame."""
@@ -28,12 +26,10 @@ def load_parquet_data(_uploaded_file_buffer):
     df['document_date'] = pd.to_datetime(df['document_date'])
     return df
 
-# --- 3. ANALYSIS FUNCTION LIBRARY ---
 def display_location_analysis(df_sales):
     st.header("🌍 Location Performance: Profit & Sales Revenue")
     tab1, tab2 = st.tabs(["📊 Past Performance Dashboard", "🔮 Future Profit Forecasting"])
 
-    # --- PAST PERFORMANCE TAB ---
     with tab1:
         st.subheader("Historical Performance Analysis")
         
@@ -68,7 +64,6 @@ def display_location_analysis(df_sales):
             ax2.set_title("Total Profit by Location")
             st.pyplot(fig2)
 
-    # --- FUTURE PREDICTION TAB ---
     with tab2:
         st.subheader("Interactive Profit Forecasting")
         
@@ -114,7 +109,6 @@ def display_location_analysis(df_sales):
         else:
             st.warning("Could not train the predictive model. More monthly data is needed.")
 
-# --- 4. MAIN APP LOGIC ---
 uploaded_file = st.sidebar.file_uploader("1. Upload your 'app_data.parquet' file", type=["parquet"])
 if uploaded_file is not None:
     df_sales = load_parquet_data(uploaded_file)
