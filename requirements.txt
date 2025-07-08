@@ -1,8 +1,0 @@
-streamlit
-pandas
-duckdb
-xgboost
-scikit-learn
-matplotlib
-seaborn
-pyarrow
