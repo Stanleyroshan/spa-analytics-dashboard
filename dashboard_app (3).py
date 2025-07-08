@@ -9,26 +9,18 @@ from sklearn.metrics import r2_score, accuracy_score, classification_report
 import calendar
 import warnings
 
-# --- 1. PROFESSIONAL PAGE CONFIGURATION & STYLING ---
 st.set_page_config(page_title="Business Analytics Dashboard", layout="wide")
 warnings.filterwarnings('ignore')
 sns.set_theme(style="whitegrid", palette="viridis")
 st.title("🚀 Professional Business Analytics Dashboard")
 st.sidebar.header("Controls")
 
-# --- 2. DATA LOADING HELPER FUNCTION ---
 @st.cache_data
 def load_parquet_data(_uploaded_file_buffer):
     """Reads the uploaded Parquet file into a pandas DataFrame."""
     df = pd.read_parquet(_uploaded_file_buffer)
     df['document_date'] = pd.to_datetime(df['document_date'])
     return df
-
-# ==============================================================================
-# --- 3. ANALYSIS FUNCTION LIBRARY ---
-# ==============================================================================
-
-# --- ANALYSIS FUNCTION FOR IDEA #20 ---
 def display_location_analysis(df_sales):
     st.header("🌍 Location Performance: Profit & Sales Revenue")
     tab1, tab2 = st.tabs(["📊 Past Performance Dashboard", "🔮 Future Profit Forecasting"])
@@ -84,8 +76,6 @@ def display_location_analysis(df_sales):
                 fig, ax = plt.subplots(figsize=(12, 6)); sns.barplot(x='Month', y='Forecasted Profit', data=forecast_df, ax=ax, palette='cividis'); plt.xticks(rotation=45); st.pyplot(fig)
         else:
             st.warning(accuracy)
-
-# --- ANALYSIS FUNCTION FOR IDEA #19 ---
 def display_new_guest_retail_prediction(df_sales):
     st.header("🛍️ New Guest Retail Purchase Prediction")
     tab1, tab2 = st.tabs(["📊 Model Performance & Insights", "🔮 Live Prediction Tool"])
@@ -140,10 +130,6 @@ def display_new_guest_retail_prediction(df_sales):
                 else: st.info("💡 Recommendation: Lower potential. Focus on the service experience first.")
         else:
             st.warning("Prediction tool disabled because the model could not be trained.")
-
-# ==============================================================================
-# --- 4. MAIN APP LOGIC with SESSION STATE ---
-# ==============================================================================
 if 'data_loaded' not in st.session_state:
     st.session_state.data_loaded = False
 
@@ -153,7 +139,7 @@ if uploaded_file is not None and not st.session_state.data_loaded:
     with st.spinner("Processing data... Please wait."):
         st.session_state.df_sales = load_parquet_data(uploaded_file)
     st.session_state.data_loaded = True
-    st.rerun() # --- THIS IS THE CORRECTED COMMAND ---
+    st.rerun() 
 
 if st.session_state.data_loaded:
     st.sidebar.success("✅ Data prepared successfully!")
