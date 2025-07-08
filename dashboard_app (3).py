@@ -6,8 +6,10 @@ import seaborn as sns
 from xgboost import XGBRegressor, XGBClassifier
 from sklearn.model_selection import train_test_split
 from sklearn.metrics import r2_score, accuracy_score, classification_report
+import duckdb
 import calendar
 import warnings
+import os
 
 # --- 1. PROFESSIONAL PAGE CONFIGURATION & STYLING ---
 st.set_page_config(page_title="Business Analytics Dashboard", layout="wide")
@@ -16,12 +18,35 @@ sns.set_theme(style="whitegrid", palette="viridis")
 st.title("🚀 Professional Business Analytics Dashboard")
 st.sidebar.header("Controls")
 
-# --- 2. DATA LOADING HELPER FUNCTION ---
-@st.cache_data
-def load_parquet_data(_uploaded_file_buffer):
-    df = pd.read_parquet(_uploaded_file_buffer)
-    df['document_date'] = pd.to_datetime(df['document_date'])
-    return df
+# --- 2. ROBUST DATA LOADING & PREPARATION FUNCTION ---
+# This function is now run only once and the result is stored in session_state.
+@st.cache_data(ttl=3600) # Cache the result for an hour
+def process_database_file(_uploaded_file_buffer):
+    """
+    Reads the uploaded DuckDB file, performs professional preprocessing, and
+    returns a clean, analysis-ready pandas DataFrame.
+    The underscore tells Streamlit not to hash the complex file object.
+    """
+    temp_db_path = "temp_database.duckdb"
+    with open(temp_db_path, "wb") as f:
+        f.write(_uploaded_file_buffer)
+    
+    con = duckdb.connect(database=temp_db_path, read_only=True)
+    query = """
+    WITH RankedLocations AS (SELECT *, ROW_NUMBER() OVER(PARTITION BY site_id ORDER BY bsf_spa_location) as rn FROM bsf_amani_bsf_spa_locations)
+    SELECT main.*, loc.bsf_spa_location AS location_name FROM bsf_amani_bsf_sales_data AS main LEFT JOIN (SELECT * FROM RankedLocations WHERE rn = 1) AS loc ON main.site_id = loc.site_id
+    """
+    df = con.execute(query).df()
+    con.close()
+    os.remove(temp_db_path)
+    
+    df['document_date'] = pd.to_datetime(df['document_date'], errors='coerce')
+    required_cols = ['document_date', 'profit', 'total_inclusive', 'location_name', 'client_id', 'description', 'category', 'item_type', 'quantity']
+    df.dropna(subset=required_cols, inplace=True)
+    for col in ['profit', 'total_inclusive', 'quantity', 'discount', 'cost']:
+        df[col] = pd.to_numeric(df[col], errors='coerce').fillna(0)
+    
+    return df[df['total_inclusive'] > 0].copy()
 
 # ==============================================================================
 # --- 3. ANALYSIS FUNCTION LIBRARY ---
@@ -140,18 +165,32 @@ def display_new_guest_retail_prediction(df_sales):
         else:
             st.warning("Prediction tool disabled because the model could not be trained.")
 
-# --- MAIN APP LOGIC ---
-uploaded_file = st.sidebar.file_uploader("1. Upload your 'app_data.parquet' file", type=["parquet"])
-if uploaded_file is not None:
-    df_sales = load_parquet_data(uploaded_file.getbuffer())
-    st.sidebar.success("✅ Data loaded!")
-    analysis_options = ["Location Profitability & Forecasting (#20)", "New Guest Retail Purchase Prediction (#19)"]
+# ==============================================================================
+# --- 4. MAIN APP LOGIC with SESSION STATE ---
+# ==============================================================================
+uploaded_file = st.sidebar.file_uploader("1. Upload your DuckDB database file", type=["duckdb"])
+
+if "data_loaded" not in st.session_state:
+    st.session_state.data_loaded = False
+
+if uploaded_file is not None and not st.session_state.data_loaded:
+    with st.spinner("Performing one-time professional data preprocessing... This may take a minute."):
+        st.session_state.df_sales = process_database_file(uploaded_file.getbuffer())
+    st.session_state.data_loaded = True
+    st.experimental_rerun()
+
+if st.session_state.data_loaded:
+    st.sidebar.success("✅ Data prepared successfully!")
+    analysis_options = [
+        "Location Profitability & Forecasting (#20)",
+        "New Guest Retail Purchase Prediction (#19)"
+    ]
     analysis_choice = st.sidebar.radio("2. Choose an analysis:", analysis_options)
     st.sidebar.markdown("---")
     
     if analysis_choice == "Location Profitability & Forecasting (#20)":
-        display_location_analysis(df_sales)
+        display_location_analysis(st.session_state.df_sales)
     elif analysis_choice == "New Guest Retail Purchase Prediction (#19)":
-        display_new_guest_retail_prediction(df_sales)
+        display_new_guest_retail_prediction(st.session_state.df_sales)
 else:
-    st.info("👈 Please upload your `app_data.parquet` file to begin.")
+    st.info("👈 Please upload your DuckDB database file to begin the analysis.")
