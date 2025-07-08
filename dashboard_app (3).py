@@ -135,7 +135,7 @@ def display_new_guest_retail_prediction(df_sales):
                 st.info("💡 Recommendation: Lower potential. Focus on the service experience first.")
 
 # ==============================================================================
-# --- 4. MAIN APP LOGIC (The "Switchboard") ---
+# --- 4. MAIN APP LOGIC (The "Switchboard") - CORRECTED ---
 # ==============================================================================
 uploaded_file = st.sidebar.file_uploader("1. Upload your 'app_data.parquet' file", type=["parquet"])
 
@@ -143,7 +143,7 @@ if uploaded_file is not None:
     df_sales = load_parquet_data(uploaded_file.getbuffer())
     st.sidebar.success("✅ Data loaded!")
     
-    # --- ADD THE NEW ANALYSIS TO THE LIST OF OPTIONS ---
+    # --- THIS IS THE CORRECTED LIST OF OPTIONS ---
     analysis_options = [
         "Location Profitability & Forecasting (#20)",
         "New Guest Retail Purchase Prediction (#19)"
@@ -151,7 +151,7 @@ if uploaded_file is not None:
     analysis_choice = st.sidebar.radio("2. Choose an analysis:", analysis_options)
     st.sidebar.markdown("---")
     
-    # --- ADD THE NEW ELIF BLOCK TO THE SWITCHBOARD ---
+    # --- THIS IS THE CORRECTED SWITCHBOARD ---
     if analysis_choice == "Location Profitability & Forecasting (#20)":
         display_location_analysis(df_sales)
     elif analysis_choice == "New Guest Retail Purchase Prediction (#19)":
