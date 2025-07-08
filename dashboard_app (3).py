@@ -27,7 +27,7 @@ def load_parquet_data(_uploaded_file_buffer):
 # --- 3. ANALYSIS FUNCTION LIBRARY ---
 # ==============================================================================
 
-# --- ANALYSIS FUNCTION FOR IDEA #20 (FULL, CORRECTED CODE) ---
+# --- ANALYSIS FUNCTION FOR IDEA #20 ---
 def display_location_analysis(df_sales):
     st.header("🌍 Location Performance: Profit & Sales Revenue")
     tab1, tab2 = st.tabs(["📊 Past Performance Dashboard", "🔮 Future Profit Forecasting"])
@@ -35,10 +35,7 @@ def display_location_analysis(df_sales):
     with tab1:
         st.subheader("Historical Performance Analysis")
         location_performance = df_sales.groupby('location_name').agg(
-            total_profit=('profit', 'sum'),
-            total_revenue=('total_inclusive', 'sum')
-        ).reset_index()
-        
+            total_profit=('profit', 'sum'), total_revenue=('total_inclusive', 'sum')).reset_index()
         st.markdown("---")
         st.subheader("🥇 Top Performer Finder")
         col1, col2 = st.columns(2)
@@ -51,19 +48,12 @@ def display_location_analysis(df_sales):
             st.success(f"**Top Profit Location:** {profit_leader['location_name']}")
             st.metric(label="Total Profit Generated", value=f"{profit_leader['total_profit']:,.0f}")
         st.markdown("---")
-        
         st.subheader("Performance Visualizations")
         vis_col1, vis_col2 = st.columns(2)
         with vis_col1:
-            fig1, ax1 = plt.subplots(figsize=(8,6))
-            sns.barplot(x='total_revenue', y='location_name', data=location_performance.sort_values('total_revenue', ascending=False), ax=ax1, palette='plasma')
-            ax1.set_title("Total Sales Revenue by Location")
-            st.pyplot(fig1)
+            fig1, ax1 = plt.subplots(); sns.barplot(x='total_revenue', y='location_name', data=location_performance.sort_values(by='total_revenue', ascending=False), ax=ax1, palette='plasma'); ax1.set_title("Total Sales Revenue"); st.pyplot(fig1)
         with vis_col2:
-            fig2, ax2 = plt.subplots(figsize=(8,6))
-            sns.barplot(x='total_profit', y='location_name', data=location_performance.sort_values('total_profit', ascending=False), ax=ax2, palette='Greens_r')
-            ax2.set_title("Total Profit by Location")
-            st.pyplot(fig2)
+            fig2, ax2 = plt.subplots(); sns.barplot(x='total_profit', y='location_name', data=location_performance.sort_values(by='total_profit', ascending=False), ax=ax2, palette='Greens_r'); ax2.set_title("Total Profit"); st.pyplot(fig2)
 
     with tab2:
         st.subheader("Interactive Profit Forecasting")
@@ -81,7 +71,6 @@ def display_location_analysis(df_sales):
             final_model = XGBRegressor(n_estimators=100, random_state=42).fit(X, y)
             return final_model, X.columns, accuracy
         model, training_cols, accuracy = train_profit_model(df_sales)
-        
         if model:
             st.info(f"**Predictive Model Accuracy (R-squared): {accuracy:.1%}**")
             all_locations = sorted(df_sales['location_name'].unique())
@@ -90,10 +79,8 @@ def display_location_analysis(df_sales):
                 forecast_year = df_sales['document_date'].dt.year.max() + 1
                 forecasts = [{'Month': calendar.month_name[m], 'Forecasted Profit': model.predict(pd.DataFrame([{'month': m, 'year': forecast_year, **{c: (c == f'location_name_{selected_location}') for c in training_cols if 'location_name_' in c}}])[training_cols])[0]} for m in range(1, 13)]
                 forecast_df = pd.DataFrame(forecasts)
-                st.subheader(f"12-Month Profit Forecast for {selected_location} ({forecast_year})")
+                st.subheader(f"12-Month Profit Forecast for {selected_location}")
                 fig, ax = plt.subplots(figsize=(12, 6)); sns.barplot(x='Month', y='Forecasted Profit', data=forecast_df, ax=ax, palette='cividis'); plt.xticks(rotation=45); st.pyplot(fig)
-                peak_month = forecast_df.loc[forecast_df['Forecasted Profit'].idxmax()]
-                st.success(f"**Automated Recommendation:** The model predicts **{peak_month['Month']}** will be the most profitable month for '{selected_location}'.")
         else:
             st.warning(accuracy)
 
@@ -103,25 +90,62 @@ def display_new_guest_retail_prediction(df_sales):
     tab1, tab2 = st.tabs(["📊 Model Performance & Insights", "🔮 Live Prediction Tool"])
     @st.cache_resource
     def train_retail_model(df):
-        # ... (full retail model training logic) ...
+        df['visit_date'] = df['document_date'].dt.date
+        first_visit_dates = df.groupby('client_id')['visit_date'].min().reset_index()
+        first_visit_df = pd.merge(df, first_visit_dates, on=['client_id', 'visit_date'])
+        retail_buyers = df[df['item_type'] == 'Retail']['client_id'].unique()
+        first_visit_features = first_visit_df.groupby('client_id').agg(
+            first_visit_spend=('total_inclusive', 'sum'), first_visit_items=('quantity', 'sum'),
+            first_service_category=('category', 'first'), location=('location_name', 'first')).reset_index()
+        first_visit_features['bought_retail'] = first_visit_features['client_id'].isin(retail_buyers).astype(int)
+        model_df = first_visit_features.dropna(subset=['first_service_category', 'location'])
+        model_data = pd.get_dummies(model_df, columns=['first_service_category', 'location'])
+        X = model_data.drop(columns=['client_id', 'bought_retail'])
+        y = model_data['bought_retail']
+        if len(y.unique()) < 2: return None, None, None, "Not enough data with both buyers and non-buyers."
+        X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.25, random_state=42, stratify=y)
+        eval_model = XGBClassifier(random_state=42).fit(X_train, y_train)
+        accuracy = accuracy_score(y_test, eval_model.predict(X_test))
+        report = classification_report(y_test, eval_model.predict(X_test), output_dict=True, zero_division=0)
+        final_model = XGBClassifier(random_state=42).fit(X, y)
+        return final_model, X.columns, accuracy, report
     model, training_cols, accuracy, report = train_retail_model(df_sales)
     with tab1:
-        # ... (full retail model performance tab logic) ...
+        st.subheader("Model Performance Evaluation")
+        if model:
+            st.info(f"**Predictive Model Accuracy: {accuracy:.1%}**")
+            st.json({"Precision_Will_Buy": f"{report.get('1', {}).get('precision', 0):.1%}", "Recall_Will_Buy": f"{report.get('1', {}).get('recall', 0):.1%}"})
+            st.caption("Recall: Of all guests who actually bought retail, how many did we correctly identify?")
+        else:
+            st.warning(report)
     with tab2:
-        # ... (full retail prediction tool tab logic) ...
+        st.subheader("Live Prediction Tool")
+        if model:
+            col1, col2 = st.columns(2)
+            with col1:
+                spend = st.slider("First Visit Spend", 0, 5000, 1000, key='retail_spend')
+                items = st.number_input("Items on First Visit", 1, 10, 1, key='retail_items')
+            with col2:
+                category = st.selectbox("Category of First Service", sorted(df_sales['category'].unique()), key='retail_cat')
+                location = st.selectbox("Location of Visit", sorted(df_sales['location_name'].unique()), key='retail_loc')
+            if st.button("Predict Likelihood", use_container_width=True, key='retail_predict_btn'):
+                future_data = pd.DataFrame([{'first_visit_spend': spend, 'first_visit_items': items, 'first_service_category': category, 'location': location}])
+                future_data_encoded = pd.get_dummies(future_data)
+                for col in training_cols:
+                    if col not in future_data_encoded.columns: future_data_encoded[col] = 0
+                prediction_proba = model.predict_proba(future_data_encoded[training_cols])[0][1]
+                st.metric("Likelihood of Buying Retail", f"{prediction_proba:.1%}")
+                if prediction_proba > 0.6: st.success("💡 Recommendation: High-potential customer. Confidently recommend products.")
+                else: st.info("💡 Recommendation: Lower potential. Focus on the service experience first.")
+        else:
+            st.warning("Prediction tool disabled because the model could not be trained.")
 
-# ==============================================================================
-# --- 4. MAIN APP LOGIC (The "Switchboard") ---
-# ==============================================================================
+# --- MAIN APP LOGIC ---
 uploaded_file = st.sidebar.file_uploader("1. Upload your 'app_data.parquet' file", type=["parquet"])
-
 if uploaded_file is not None:
     df_sales = load_parquet_data(uploaded_file.getbuffer())
     st.sidebar.success("✅ Data loaded!")
-    analysis_options = [
-        "Location Profitability & Forecasting (#20)",
-        "New Guest Retail Purchase Prediction (#19)"
-    ]
+    analysis_options = ["Location Profitability & Forecasting (#20)", "New Guest Retail Purchase Prediction (#19)"]
     analysis_choice = st.sidebar.radio("2. Choose an analysis:", analysis_options)
     st.sidebar.markdown("---")
     
